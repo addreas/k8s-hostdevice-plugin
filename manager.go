@@ -19,6 +19,7 @@ package devicemanager
 import (
 	v1 "k8s.io/api/core/v1"
 	podresourcesapi "k8s.io/kubernetes/pkg/kubelet/apis/podresources/v1alpha1"
+	"k8s.io/kubernetes/pkg/kubelet/cm/devicemanager"
 	"k8s.io/kubernetes/pkg/kubelet/cm/topologymanager"
 	"k8s.io/kubernetes/pkg/kubelet/config"
 	"k8s.io/kubernetes/pkg/kubelet/lifecycle"
@@ -35,7 +36,7 @@ func NewManagerStub() (*ManagerStub, error) {
 }
 
 // Start simply returns nil.
-func (h *ManagerStub) Start(activePods ActivePodsFunc, sourcesReady config.SourcesReady) error {
+func (h *ManagerStub) Start(activePods devicemanager.ActivePodsFunc, sourcesReady config.SourcesReady) error {
 	return nil
 }
 
@@ -55,7 +56,7 @@ func (h *ManagerStub) UpdatePluginResources(node *schedulerframework.NodeInfo, a
 }
 
 // GetDeviceRunContainerOptions simply returns nil.
-func (h *ManagerStub) GetDeviceRunContainerOptions(pod *v1.Pod, container *v1.Container) (*DeviceRunContainerOptions, error) {
+func (h *ManagerStub) GetDeviceRunContainerOptions(pod *v1.Pod, container *v1.Container) (*devicemanager.DeviceRunContainerOptions, error) {
 	return nil, nil
 }
 
