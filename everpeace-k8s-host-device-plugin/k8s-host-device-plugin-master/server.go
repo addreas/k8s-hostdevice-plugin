@@ -10,21 +10,20 @@ import (
 
 	"golang.org/x/net/context"
 	"google.golang.org/grpc"
-	pluginapi "k8s.io/kubelet/pkg/apis/deviceplugin/v1beta1"
+	pluginapi "k8s.io/kubernetes/pkg/kubelet/apis/deviceplugin/v1beta1"
 )
 
 const (
-	defaultHealthCheckInterval = time.Duration(60)
+	defaultHealthCheckIntervalSeconds = time.Duration(60)
 )
 
-// HostDevice (pluginapi.DeviceSpec)
 type HostDevice struct {
 	HostPath      string `json:"hostPath"`
 	ContainerPath string `json:"containerPath"`
 	Permission    string `json:"permission"`
 }
 
-// HostDevicePluginConfig configures the HostDevicePlugin
+// HostDevicePlugin implements the Kubernetes device plugin API
 type HostDevicePluginConfig struct {
 	ResourceName               string        `json:"resourceName"`
 	SocketName                 string        `json:"socketName"`
@@ -33,7 +32,6 @@ type HostDevicePluginConfig struct {
 	HealthCheckIntervalSeconds time.Duration `json:"healthCheckIntervalSeconds"`
 }
 
-// HostDevicePlugin implements the Kubernetes device plugin API
 type HostDevicePlugin struct {
 	resourceName               string
 	socket                     string
@@ -54,21 +52,21 @@ func NewHostDevicePlugin(config HostDevicePluginConfig) *HostDevicePlugin {
 	var devs = make([]*pluginapi.Device, config.NumDevices)
 
 	health := getHostDevicesHealth(config.HostDevices)
-	for i := range devs {
+	for i, _ := range devs {
 		devs[i] = &pluginapi.Device{
 			ID:     fmt.Sprint(i),
 			Health: health,
 		}
 	}
 
-	healthCheckIntervalSeconds := defaultHealthCheckInterval
+	healthCheckIntervalSeconds := defaultHealthCheckIntervalSeconds
 	if config.HealthCheckIntervalSeconds > 0 {
 		healthCheckIntervalSeconds = config.HealthCheckIntervalSeconds
 	}
 
 	return &HostDevicePlugin{
-		resourceName:               config.ResourceName,
-		socket:                     pluginapi.DevicePluginPath + config.SocketName,
+		resourceName: config.ResourceName,
+		socket:       pluginapi.DevicePluginPath + config.SocketName,
 		healthCheckIntervalSeconds: healthCheckIntervalSeconds,
 
 		devs:        devs,
@@ -209,9 +207,9 @@ func (m *HostDevicePlugin) Allocate(ctx context.Context, r *pluginapi.AllocateRe
 
 	ress := make([]*pluginapi.ContainerAllocateResponse, len(r.GetContainerRequests()))
 
-	for i := range r.GetContainerRequests() {
+	for i, _ := range r.GetContainerRequests() {
 		ds := make([]*pluginapi.DeviceSpec, len(m.hostDevices))
-		for j := range m.hostDevices {
+		for j, _ := range m.hostDevices {
 			ds[j] = &pluginapi.DeviceSpec{
 				HostPath:      m.hostDevices[j].HostPath,
 				ContainerPath: m.hostDevices[j].ContainerPath,
@@ -231,21 +229,14 @@ func (m *HostDevicePlugin) Allocate(ctx context.Context, r *pluginapi.AllocateRe
 	return &response, nil
 }
 
-// GetDevicePluginOptions implements pluginapi.DevicePluginServer
 func (m *HostDevicePlugin) GetDevicePluginOptions(context.Context, *pluginapi.Empty) (*pluginapi.DevicePluginOptions, error) {
 	return &pluginapi.DevicePluginOptions{
 		PreStartRequired: false,
 	}, nil
 }
 
-// PreStartContainer implements pluginapi.DevicePluginServer
 func (m *HostDevicePlugin) PreStartContainer(context.Context, *pluginapi.PreStartContainerRequest) (*pluginapi.PreStartContainerResponse, error) {
 	return &pluginapi.PreStartContainerResponse{}, nil
-}
-
-// GetPreferredAllocation implements pluginapi.DevicePluginServer
-func (m *HostDevicePlugin) GetPreferredAllocation(context.Context, *pluginapi.PreferredAllocationRequest) (*pluginapi.PreferredAllocationResponse, error) {
-	return &pluginapi.PreferredAllocationResponse{}, nil
 }
 
 func (m *HostDevicePlugin) cleanup() error {
