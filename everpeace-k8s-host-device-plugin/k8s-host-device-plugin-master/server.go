@@ -10,7 +10,7 @@ import (
 
 	"golang.org/x/net/context"
 	"google.golang.org/grpc"
-	pluginapi "k8s.io/kubernetes/pkg/kubelet/apis/deviceplugin/v1beta1"
+	pluginapi "k8s.io/kubelet/pkg/apis/deviceplugin/v1beta1"
 )
 
 const (
@@ -65,8 +65,8 @@ func NewHostDevicePlugin(config HostDevicePluginConfig) *HostDevicePlugin {
 	}
 
 	return &HostDevicePlugin{
-		resourceName: config.ResourceName,
-		socket:       pluginapi.DevicePluginPath + config.SocketName,
+		resourceName:               config.ResourceName,
+		socket:                     pluginapi.DevicePluginPath + config.SocketName,
 		healthCheckIntervalSeconds: healthCheckIntervalSeconds,
 
 		devs:        devs,
@@ -237,6 +237,10 @@ func (m *HostDevicePlugin) GetDevicePluginOptions(context.Context, *pluginapi.Em
 
 func (m *HostDevicePlugin) PreStartContainer(context.Context, *pluginapi.PreStartContainerRequest) (*pluginapi.PreStartContainerResponse, error) {
 	return &pluginapi.PreStartContainerResponse{}, nil
+}
+
+func (m *HostDevicePlugin) GetPreferredAllocation(context.Context, *pluginapi.PreferredAllocationRequest) (*pluginapi.PreferredAllocationResponse, error) {
+	return &pluginapi.PreferredAllocationResponse{}, nil
 }
 
 func (m *HostDevicePlugin) cleanup() error {
