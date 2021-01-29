@@ -7,7 +7,7 @@ ENV \
 	GO111MODULE='on'
 RUN set -eux && \
 	apk add --no-cache \
-		git
+	git gcc musl-dev libudev-zero-dev linux-headers
 WORKDIR /mod
 COPY go.mod /mod/
 COPY go.sum /mod/
@@ -15,10 +15,8 @@ RUN set -eux && \
 	go mod download
 COPY . /mod/
 RUN set -eux && \
-	CGO_ENABLED=0 GOBIN=${OUTDIR}/usr/bin/ go install \
+	CGO_ENABLED=1 GOOS=linux GOBIN=${OUTDIR}/usr/bin/ go install \
 		-a -v \
-		-tags='osusergo,netgo' \
-		-installsuffix='netgo' \
 		-ldflags="-s -w \"-extldflags=-static\"" \
 	.
 
