@@ -19,10 +19,10 @@ RUN set -eux && \
 	go mod download
 COPY . /mod/
 RUN set -eux && \
-	CGO_ENABLED=1 GOOS=linux GOBIN=/usr/bin/ go install \
+	CGO_ENABLED=1 GOOS=linux GOBIN=/bin go install \
 	./...
 RUN rm -r /go /usr
 
 FROM scratch
 COPY --from=builder / /
-ENTRYPOINT ["/usr/bin/k8s-hostdevice-plugin"]
+ENTRYPOINT ["k8s-hostdevice-plugin"]
