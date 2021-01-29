@@ -1,18 +1,21 @@
-apiVersion: extensions/v1beta1
+apiVersion: apps/v1
 kind: DaemonSet
 metadata:
-  name: k8s-host-device-plugin-daemonset
+  name: hostdevice-plugin-daemonset
   namespace: kube-system
 spec:
+  selector:
+    matchLabels:
+      app: hostdevice-plugin
   template:
     metadata:
+      labels:
+        app: hostdevice-plugin
       # Mark this pod as a critical add-on; when enabled, the critical add-on scheduler
       # reserves resources for critical add-on pods so that they can be rescheduled after
       # a failure.  This annotation works in tandem with the toleration below.
       annotations:
         scheduler.alpha.kubernetes.io/critical-pod: ""
-      labels:
-        name: k8s-host-device-plugin-ds
     spec:
       tolerations:
       # Allow this pod to be rescheduled while the node is in "critical add-ons only" mode.
@@ -20,8 +23,8 @@ spec:
       - key: CriticalAddonsOnly
         operator: Exists
       containers:
-      - image: everpeace/k8s-host-device-plugin:latest
-        name: k8s-host-device-plugin-ctr
+      - image: ghcr.io/addreas/k8s-hostdevice-plugin:latest
+        name: plugin
         securityContext:
           allowPrivilegeEscalation: false
           capabilities:
@@ -30,14 +33,11 @@ spec:
           - name: device-plugin
             mountPath: /var/lib/kubelet/device-plugins
           - name: config
-            mountPath: /k8s-host-device-plugin
+            mountPath: /k8s-hostdevice-plugin
       volumes:
         - name: device-plugin
           hostPath:
             path: /var/lib/kubelet/device-plugins
         - name: config
           configMap:
-            name: host-devices
-            items:
-            - key: config.json
-              path: config.json
+            name: hostdevice-plugin-config

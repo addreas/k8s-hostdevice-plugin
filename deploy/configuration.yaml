@@ -1,0 +1,26 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: hostdevice-plugin-config
+  namespace: kube-system
+data:
+  config.json: |
+    {
+      "socketName": "hostdevice-plugin.sock",
+      "devices": {
+        "serial.addem.se/dev/yanzi-serial-radio": {
+          "containerPath": "/dev/yanzi-serial-radio",
+          "matchProperties": {
+            "ID_VENDOR": "Texas_Instruments",
+            "ID_MODEL": "Yanzi_Serial_Radio"
+          }
+        },
+        "serial.addem.se/dev/deconz-conbee": {
+          "containerPath": "/dev/deconz-conbee",
+          "matchProperties": {
+            "ID_VENDOR": "FTDI",
+            "ID_MODEL": "FT230X_Basic_UART"
+          }
+        }
+      }
+    }

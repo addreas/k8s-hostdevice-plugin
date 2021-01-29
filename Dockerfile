@@ -1,4 +1,4 @@
-ARG GOLANG_VERSION
+ARG GOLANG_VERSION=1.15
 FROM docker.io/golang:${GOLANG_VERSION}-alpine AS builder
 
 ENV \
@@ -23,4 +23,4 @@ RUN set -eux && \
 
 FROM gcr.io/distroless/static:latest
 COPY --from=builder /out/ /
-ENTRYPOINT ["/usr/bin/k8s-hostdev-plugin"]
+ENTRYPOINT ["/usr/bin/k8s-hostdevice-plugin"]
