@@ -3,8 +3,10 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"flag"
 	"fmt"
 	"io/ioutil"
+	"path"
 	"strings"
 	"syscall"
 
@@ -64,6 +66,7 @@ func updateDevices(dps map[string]*Stub, config Config) error {
 
 		for _, ud := range udevs {
 			if !devconf.matchesProperties(ud) {
+				klog.V(1).Info("ignored device %s\n", ud.Syspath())
 				continue
 			}
 
@@ -84,7 +87,7 @@ func createDevicePlugins(config Config) (map[string]*Stub, error) {
 	dps := make(map[string]*Stub)
 
 	for resourceName, devconf := range config.Devices {
-		socketPath := fmt.Sprintf("%s/%s-%s.sock", pluginapi.DevicePluginPath, config.SocketPrefix, strings.Replace(resourceName, "/", "-", -1))
+		socketPath := fmt.Sprintf("%s%s/%s.sock", pluginapi.DevicePluginPath, config.SocketPrefix, strings.Replace(resourceName, "/", "-", -1))
 
 		klog.Infof("Setting up device %s with socket path %s", resourceName, socketPath)
 		dp := NewDevicePluginStub([]*pluginapi.Device{}, socketPath, resourceName, false, false)
@@ -120,7 +123,7 @@ func createDevicePlugins(config Config) (map[string]*Stub, error) {
 			return dps, fmt.Errorf("failed to start device plugin: %s", err)
 		}
 
-		if err := dp.Register(pluginapi.KubeletSocket, resourceName, pluginapi.DevicePluginPath); err != nil {
+		if err := dp.Register(pluginapi.KubeletSocket, resourceName, path.Dir(socketPath)); err != nil {
 			return dps, fmt.Errorf("failed to register device plugin: %s", err)
 		}
 
@@ -131,6 +134,7 @@ func createDevicePlugins(config Config) (map[string]*Stub, error) {
 }
 
 func main() {
+	flag.Parse()
 	klog.Infoln("Starting FS watcher.")
 	kubeletWatcher, err := newFSWatcher(pluginapi.DevicePluginPath)
 	if err != nil {

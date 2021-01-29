@@ -25,10 +25,10 @@ spec:
       containers:
       - image: ghcr.io/addreas/k8s-hostdevice-plugin:latest
         name: plugin
+        args:
+        - -v=1
         securityContext:
-          allowPrivilegeEscalation: false
-          capabilities:
-            drop: ["ALL"]
+          privileged: true
         volumeMounts:
           - name: device-plugin
             mountPath: /var/lib/kubelet/device-plugins
