@@ -1,25 +1,28 @@
 ARG GOLANG_VERSION=1.15
-FROM docker.io/golang:${GOLANG_VERSION}-alpine AS builder
+FROM docker.io/golang:${GOLANG_VERSION} AS builder
 LABEL org.opencontainers.image.source https://github.com/addreas/k8s-hostdevice-plugin
 
 ENV \
 	OUTDIR='/out' \
 	GO111MODULE='on'
+
 RUN set -eux && \
-	apk add --no-cache \
-	git gcc musl-dev libudev-zero-dev linux-headers
+	apt-get update && apt-get install -y --no-install-recommends \
+	libudev-dev \
+	&& rm -rf /var/lib/apt/lists/*
+
 WORKDIR /mod
+
 COPY go.mod /mod/
 COPY go.sum /mod/
 RUN set -eux && \
 	go mod download
 COPY . /mod/
 RUN set -eux && \
-	CGO_ENABLED=1 GOOS=linux GOBIN=${OUTDIR}/usr/bin/ go install \
-		-a -v \
-		-ldflags="-s -w \"-extldflags=-static\"" \
-	.
+	CGO_ENABLED=1 GOOS=linux GOBIN=/usr/bin/ go install \
+	./...
+RUN rm -r /go /usr
 
-FROM gcr.io/distroless/static:latest
-COPY --from=builder /out/ /
+FROM scratch
+COPY --from=builder / /
 ENTRYPOINT ["/usr/bin/k8s-hostdevice-plugin"]

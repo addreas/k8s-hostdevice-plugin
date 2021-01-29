@@ -130,6 +130,7 @@ func createDevicePlugins(config Config) (map[string]*Stub, error) {
 		dps[resourceName] = dp
 	}
 
+	klog.V(1).Infof("Resulting dps %s\n", dps)
 	return dps, nil
 }
 
