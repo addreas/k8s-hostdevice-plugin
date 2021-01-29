@@ -1,5 +1,6 @@
 ARG GOLANG_VERSION=1.15
 FROM docker.io/golang:${GOLANG_VERSION}-alpine AS builder
+LABEL org.opencontainers.image.source https://github.com/addreas/k8s-hostdevice-plugin
 
 ENV \
 	OUTDIR='/out' \
