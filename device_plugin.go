@@ -6,7 +6,7 @@ import (
 	"flag"
 	"fmt"
 	"io/ioutil"
-	"path"
+	"os"
 	"strings"
 	"syscall"
 
@@ -85,9 +85,11 @@ func updateDevices(dps map[string]*Stub, config Config) error {
 
 func createDevicePlugins(config Config) (map[string]*Stub, error) {
 	dps := make(map[string]*Stub)
+	socketDir := pluginapi.DevicePluginPath + config.SocketPrefix
+	os.MkdirAll(socketDir, 0755)
 
 	for resourceName, devconf := range config.Devices {
-		socketPath := fmt.Sprintf("%s%s/%s.sock", pluginapi.DevicePluginPath, config.SocketPrefix, strings.Replace(resourceName, "/", "-", -1))
+		socketPath := fmt.Sprintf("%s/%s.sock", socketDir, strings.Replace(resourceName, "/", "-", -1))
 
 		klog.Infof("Setting up device %s with socket path %s", resourceName, socketPath)
 		dp := NewDevicePluginStub([]*pluginapi.Device{}, socketPath, resourceName, false, false)
@@ -123,7 +125,7 @@ func createDevicePlugins(config Config) (map[string]*Stub, error) {
 			return dps, fmt.Errorf("failed to start device plugin: %s", err)
 		}
 
-		if err := dp.Register(pluginapi.KubeletSocket, resourceName, path.Dir(socketPath)); err != nil {
+		if err := dp.Register(pluginapi.KubeletSocket, resourceName, socketDir); err != nil {
 			return dps, fmt.Errorf("failed to register device plugin: %s", err)
 		}
 
