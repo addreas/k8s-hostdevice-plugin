@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
-	"os"
 	"strings"
 	"syscall"
 
@@ -52,9 +51,6 @@ func (devconf *DeviceConfig) matchesProperties(ud *udev.Device) bool {
 
 func createDevicePlugins(config Config) (map[string]*Stub, error) {
 	dps := make(map[string]*Stub)
-	socketDir := pluginapi.DevicePluginPath + config.SocketPrefix
-	os.MkdirAll(socketDir, 0755)
-
 	var u udev.Udev
 
 	udevs, err := u.NewEnumerate().Devices()
@@ -63,7 +59,7 @@ func createDevicePlugins(config Config) (map[string]*Stub, error) {
 	}
 
 	for resourceName, devconf := range config.Devices {
-		socketPath := fmt.Sprintf("%s/%s.sock", socketDir, strings.Replace(resourceName, "/", "-", -1))
+		socketPath := fmt.Sprintf("%s%s%s.sock", pluginapi.DevicePluginPath, config.SocketPrefix, strings.Replace(resourceName, "/", "-", -1))
 
 		devs := []*pluginapi.Device{}
 
@@ -117,7 +113,7 @@ func createDevicePlugins(config Config) (map[string]*Stub, error) {
 			return dps, fmt.Errorf("failed to start device plugin: %s", err)
 		}
 
-		if err := dp.Register(pluginapi.KubeletSocket, resourceName, socketDir); err != nil {
+		if err := dp.Register(pluginapi.KubeletSocket, resourceName, pluginapi.DevicePluginPath); err != nil {
 			return dps, fmt.Errorf("failed to register device plugin: %s", err)
 		}
 

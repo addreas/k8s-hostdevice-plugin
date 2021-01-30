@@ -177,6 +177,7 @@ func (m *Stub) NotifyRegistrationStatus(ctx context.Context, status *watcherapi.
 	if !status.PluginRegistered {
 		klog.Infof("Registration failed: %v", status.Error)
 	}
+	klog.InfoS("NotifyRegistrationStatus", "registatus", m.registrationStatus, "plugregistered", status.PluginRegistered)
 	return &watcherapi.RegistrationStatusResponse{}, nil
 }
 
