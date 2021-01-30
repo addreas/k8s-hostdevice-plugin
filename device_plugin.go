@@ -53,7 +53,7 @@ func (devconf *DeviceConfig) matchesProperties(ud *udev.Device) bool {
 func createDevicePlugins(config Config) (map[string]*Stub, error) {
 	dps := make(map[string]*Stub)
 	var u udev.Udev
-	socketDir := pluginapi.DevicePluginPath + config.SocketPrefix
+	socketDir := pluginapi.DevicePluginPath + config.SocketPrefix + "/"
 	os.MkdirAll(socketDir, 0755)
 
 	udevs, err := u.NewEnumerate().Devices()
@@ -62,7 +62,7 @@ func createDevicePlugins(config Config) (map[string]*Stub, error) {
 	}
 
 	for resourceName, devconf := range config.Devices {
-		socketPath := fmt.Sprintf("%s/%s.sock", socketDir, strings.Replace(resourceName, "/", "-", -1))
+		socketPath := fmt.Sprintf("%s%s.sock", socketDir, strings.Replace(resourceName, "/", "-", -1))
 
 		devs := []*pluginapi.Device{}
 
