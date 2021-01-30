@@ -94,9 +94,11 @@ func createDevicePlugins(config Config) (map[string]*Stub, error) {
 						return nil, fmt.Errorf("invalid allocation request with unhealthy device: %s", requestID)
 					}
 
+					ud := u.NewDeviceFromSyspath(dev.ID)
+					hp, _ := ud.DevlinkIterator().Next()
 					response.Devices = append(response.Devices, &pluginapi.DeviceSpec{
 						ContainerPath: devconf.ContainerPath,
-						HostPath:      dev.ID,
+						HostPath:      hp.(string),
 						Permissions:   devconf.Permissions,
 					})
 				}
