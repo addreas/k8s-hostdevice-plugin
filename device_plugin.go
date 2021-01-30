@@ -81,7 +81,6 @@ func createDevicePlugins(config Config) (map[string]*Stub, error) {
 		dp := NewDevicePluginStub(devs, socketPath, resourceName, false, false)
 
 		dp.SetAllocFunc(func(r *pluginapi.AllocateRequest, devs map[string]pluginapi.Device) (*pluginapi.AllocateResponse, error) {
-			var u udev.Udev
 			var responses pluginapi.AllocateResponse
 			for _, req := range r.ContainerRequests {
 				response := &pluginapi.ContainerAllocateResponse{}
@@ -97,7 +96,7 @@ func createDevicePlugins(config Config) (map[string]*Stub, error) {
 
 					response.Devices = append(response.Devices, &pluginapi.DeviceSpec{
 						ContainerPath: devconf.ContainerPath,
-						HostPath:      u.NewDeviceFromSyspath(dev.ID).Devpath(),
+						HostPath:      dev.ID,
 						Permissions:   devconf.Permissions,
 					})
 				}
