@@ -60,14 +60,14 @@ func updateDevices(dps map[string]*Stub, config Config) error {
 		return fmt.Errorf("failed to list udev devices: %s", err)
 	}
 
+	klog.Infof("Searching devices for %s\n", dps)
+
 	for resourceName, dp := range dps {
-		klog.Infof("Searghing devices for %s\n", resourceName)
 		devconf := config.Devices[resourceName]
 		devs := []*pluginapi.Device{}
 
 		for _, ud := range udevs {
 			if !devconf.matchesProperties(ud) {
-				klog.Info("ignored device %s\n", ud.Syspath())
 				continue
 			}
 
@@ -81,6 +81,7 @@ func updateDevices(dps map[string]*Stub, config Config) error {
 		dp.Update(devs)
 	}
 
+	klog.Infof("Done searching devies for %s\n", dps)
 	return nil
 }
 
@@ -170,11 +171,15 @@ func main() {
 		klog.Fatalf("failed to create device plugins: %s\n", err)
 	}
 
+	klog.Infof("Created device plugins %s", dps)
+
 	if err := updateDevices(dps, config); err != nil {
 		klog.Fatalf("failed to update devices: %s\n", err)
 	}
 
-	restart := true
+	klog.Info("Updated devices")
+
+	restart := false
 	for {
 		if restart {
 			restart = false
