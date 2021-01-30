@@ -95,11 +95,6 @@ func createDevicePlugins(config Config) (map[string]*Stub, error) {
 						return nil, fmt.Errorf("invalid allocation request with unhealthy device: %s", requestID)
 					}
 
-					response.Mounts = append(response.Mounts, &pluginapi.Mount{
-						ContainerPath: devconf.ContainerPath,
-						HostPath:      u.NewDeviceFromSyspath(dev.ID).Devpath(),
-					})
-
 					response.Devices = append(response.Devices, &pluginapi.DeviceSpec{
 						ContainerPath: devconf.ContainerPath,
 						HostPath:      u.NewDeviceFromSyspath(dev.ID).Devpath(),
