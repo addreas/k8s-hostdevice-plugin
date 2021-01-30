@@ -53,7 +53,7 @@ func (devconf *DeviceConfig) matchesProperties(ud *udev.Device) bool {
 func createDevicePlugins(config Config) (map[string]*Stub, error) {
 	dps := make(map[string]*Stub)
 	var u udev.Udev
-	socketDir := "/var/lib/kubelet/plugins/" + config.SocketPrefix
+	socketDir := pluginapi.DevicePluginPath + config.SocketPrefix
 	os.MkdirAll(socketDir, 0755)
 
 	udevs, err := u.NewEnumerate().Devices()
