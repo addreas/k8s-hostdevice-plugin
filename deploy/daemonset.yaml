@@ -32,12 +32,17 @@ spec:
         volumeMounts:
           - name: device-plugin
             mountPath: /var/lib/kubelet/device-plugins
+          - name: run-udev
+            mountPath: /run/udev
           - name: config
             mountPath: /k8s-hostdevice-plugin
       volumes:
         - name: device-plugin
           hostPath:
             path: /var/lib/kubelet/device-plugins
+        - name: run-udev
+          hostPath:
+            path: /run/udev
         - name: config
           configMap:
             name: hostdevice-plugin-config

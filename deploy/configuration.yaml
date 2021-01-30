@@ -8,14 +8,14 @@ data:
     {
       "socketPrefix": "hostdevice-plugin",
       "devices": {
-        "serial.addem.se/dev/yanzi-serial-radio": {
+        "addem.se/dev_yanzi_serial_radio": {
           "containerPath": "/dev/yanzi-serial-radio",
           "matchProperties": {
             "ID_VENDOR": "Texas_Instruments",
             "ID_MODEL": "Yanzi_Serial_Radio"
           }
         },
-        "serial.addem.se/dev/deconz-conbee": {
+        "addem.se/dev_deconz_conbee": {
           "containerPath": "/dev/deconz-conbee",
           "matchProperties": {
             "ID_VENDOR": "FTDI",

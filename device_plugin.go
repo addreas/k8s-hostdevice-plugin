@@ -61,12 +61,13 @@ func updateDevices(dps map[string]*Stub, config Config) error {
 	}
 
 	for resourceName, dp := range dps {
+		klog.Infof("Searghing devices for %s\n", resourceName)
 		devconf := config.Devices[resourceName]
 		devs := []*pluginapi.Device{}
 
 		for _, ud := range udevs {
 			if !devconf.matchesProperties(ud) {
-				klog.V(1).Info("ignored device %s\n", ud.Syspath())
+				klog.Info("ignored device %s\n", ud.Syspath())
 				continue
 			}
 
@@ -76,7 +77,7 @@ func updateDevices(dps map[string]*Stub, config Config) error {
 			})
 		}
 
-		klog.Infof("Setting devices for %s to %s", resourceName, devs)
+		klog.Infof("Setting devices for %s to %s\n", resourceName, devs)
 		dp.Update(devs)
 	}
 
@@ -109,6 +110,11 @@ func createDevicePlugins(config Config) (map[string]*Stub, error) {
 						return nil, fmt.Errorf("invalid allocation request with unhealthy device: %s", requestID)
 					}
 
+					response.Mounts = append(response.Mounts, &pluginapi.Mount{
+						ContainerPath: devconf.ContainerPath,
+						HostPath:      u.NewDeviceFromSyspath(dev.ID).Devpath(),
+					})
+
 					response.Devices = append(response.Devices, &pluginapi.DeviceSpec{
 						ContainerPath: devconf.ContainerPath,
 						HostPath:      u.NewDeviceFromSyspath(dev.ID).Devpath(),
@@ -132,7 +138,7 @@ func createDevicePlugins(config Config) (map[string]*Stub, error) {
 		dps[resourceName] = dp
 	}
 
-	klog.V(1).Infof("Resulting dps %s\n", dps)
+	klog.Infof("Resulting dps %s\n", dps)
 	return dps, nil
 }
 
