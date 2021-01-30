@@ -1,9 +1,7 @@
 package main
 
 import (
-	"context"
 	"encoding/json"
-	"flag"
 	"fmt"
 	"io/ioutil"
 	"os"
@@ -52,18 +50,21 @@ func (devconf *DeviceConfig) matchesProperties(ud *udev.Device) bool {
 	return true
 }
 
-func updateDevices(dps map[string]*Stub, config Config) error {
+func createDevicePlugins(config Config) (map[string]*Stub, error) {
+	dps := make(map[string]*Stub)
+	socketDir := pluginapi.DevicePluginPath + config.SocketPrefix
+	os.MkdirAll(socketDir, 0755)
+
 	var u udev.Udev
 
 	udevs, err := u.NewEnumerate().Devices()
 	if err != nil {
-		return fmt.Errorf("failed to list udev devices: %s", err)
+		return nil, fmt.Errorf("failed to list udev devices: %s", err)
 	}
 
-	klog.Infof("Searching devices for %s\n", dps)
+	for resourceName, devconf := range config.Devices {
+		socketPath := fmt.Sprintf("%s/%s.sock", socketDir, strings.Replace(resourceName, "/", "-", -1))
 
-	for resourceName, dp := range dps {
-		devconf := config.Devices[resourceName]
 		devs := []*pluginapi.Device{}
 
 		for _, ud := range udevs {
@@ -77,24 +78,8 @@ func updateDevices(dps map[string]*Stub, config Config) error {
 			})
 		}
 
-		klog.Infof("Setting devices for %s to %s\n", resourceName, devs)
-		dp.Update(devs)
-	}
-
-	klog.Infof("Done searching devies for %s\n", dps)
-	return nil
-}
-
-func createDevicePlugins(config Config) (map[string]*Stub, error) {
-	dps := make(map[string]*Stub)
-	socketDir := pluginapi.DevicePluginPath + config.SocketPrefix
-	os.MkdirAll(socketDir, 0755)
-
-	for resourceName, devconf := range config.Devices {
-		socketPath := fmt.Sprintf("%s/%s.sock", socketDir, strings.Replace(resourceName, "/", "-", -1))
-
-		klog.Infof("Setting up device %s with socket path %s", resourceName, socketPath)
-		dp := NewDevicePluginStub([]*pluginapi.Device{}, socketPath, resourceName, false, false)
+		klog.Infof("Setting up device %s with socket path %s and devices %s", resourceName, socketPath, devs)
+		dp := NewDevicePluginStub(devs, socketPath, resourceName, false, false)
 
 		dp.SetAllocFunc(func(r *pluginapi.AllocateRequest, devs map[string]pluginapi.Device) (*pluginapi.AllocateResponse, error) {
 			var u udev.Udev
@@ -144,7 +129,6 @@ func createDevicePlugins(config Config) (map[string]*Stub, error) {
 }
 
 func main() {
-	flag.Parse()
 	klog.Infoln("Starting FS watcher.")
 	kubeletWatcher, err := newFSWatcher(pluginapi.DevicePluginPath)
 	if err != nil {
@@ -160,24 +144,12 @@ func main() {
 		klog.Fatalf("failed to load config: %s\n", err)
 	}
 
-	var u udev.Udev
-	deviceUpdates, err := u.NewMonitorFromNetlink("udev").DeviceChan(context.Background())
-	if err != nil {
-		klog.Fatalf("failed to listen on device updates: %s\n", err)
-	}
-
 	dps, err := createDevicePlugins(config)
 	if err != nil {
 		klog.Fatalf("failed to create device plugins: %s\n", err)
 	}
 
 	klog.Infof("Created device plugins %s", dps)
-
-	if err := updateDevices(dps, config); err != nil {
-		klog.Fatalf("failed to update devices: %s\n", err)
-	}
-
-	klog.Info("Updated devices")
 
 	restart := false
 	for {
@@ -188,13 +160,9 @@ func main() {
 			}
 
 			config.load()
-			dps, err := createDevicePlugins(config)
+			dps, err = createDevicePlugins(config)
 			if err != nil {
 				klog.Fatalf("failed to create device plugins: %s\n", err)
-			}
-
-			if err := updateDevices(dps, config); err != nil {
-				klog.Fatalf("failed to update devices: %s\n", err)
 			}
 		}
 
@@ -207,11 +175,6 @@ func main() {
 
 		case err := <-kubeletWatcher.Errors:
 			klog.Infof("inotify: %s", err)
-
-		case <-deviceUpdates:
-			if err := updateDevices(dps, config); err != nil {
-				klog.Fatalf("failed to update devices: %s\n", err)
-			}
 
 		case s := <-sigWatcher:
 			switch s {
