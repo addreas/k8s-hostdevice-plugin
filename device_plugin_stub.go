@@ -221,6 +221,7 @@ func (m *Stub) Register(kubeletEndpoint, resourceName string, pluginSockDir stri
 
 // GetDevicePluginOptions returns DevicePluginOptions settings for the device plugin.
 func (m *Stub) GetDevicePluginOptions(ctx context.Context, e *pluginapi.Empty) (*pluginapi.DevicePluginOptions, error) {
+	klog.Info("GetDevicePluginOptions")
 	options := &pluginapi.DevicePluginOptions{
 		PreStartRequired:                m.preStartContainerFlag,
 		GetPreferredAllocationAvailable: m.getPreferredAllocationFlag,

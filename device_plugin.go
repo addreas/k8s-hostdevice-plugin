@@ -120,7 +120,6 @@ func createDevicePlugins(config Config) (map[string]*Stub, error) {
 		dps[resourceName] = dp
 	}
 
-	klog.Infof("Resulting dps %s\n", dps)
 	return dps, nil
 }
 
@@ -144,8 +143,6 @@ func main() {
 	if err != nil {
 		klog.Fatalf("failed to create device plugins: %s\n", err)
 	}
-
-	klog.Infof("Created device plugins %s", dps)
 
 	restart := false
 	for {
