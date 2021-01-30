@@ -41,6 +41,42 @@ func (config *Config) load() error {
 	return nil
 }
 
+func (config *Config) allocFuncFor(resourceName string) stubAllocFunc {
+	var u udev.Udev
+	devconf := config.Devices[resourceName]
+	return func(r *pluginapi.AllocateRequest, devs map[string]pluginapi.Device) (*pluginapi.AllocateResponse, error) {
+		var responses pluginapi.AllocateResponse
+		for _, req := range r.ContainerRequests {
+			response := &pluginapi.ContainerAllocateResponse{}
+			for _, requestID := range req.DevicesIDs {
+				dev, ok := devs[requestID]
+				if !ok {
+					return nil, fmt.Errorf("invalid allocation request with non-existing device %s", requestID)
+				}
+
+				if dev.Health != pluginapi.Healthy {
+					return nil, fmt.Errorf("invalid allocation request with unhealthy device: %s", requestID)
+				}
+
+				if devconf.Permissions == "" {
+					return nil, fmt.Errorf("permissions for device cannot be empty for device %s", requestID)
+				}
+
+				ud := u.NewDeviceFromSyspath(dev.ID)
+				hp, _ := ud.DevlinkIterator().Next()
+				response.Devices = append(response.Devices, &pluginapi.DeviceSpec{
+					ContainerPath: devconf.ContainerPath,
+					HostPath:      hp.(string),
+					Permissions:   devconf.Permissions,
+				})
+			}
+			responses.ContainerResponses = append(responses.ContainerResponses, response)
+		}
+
+		return &responses, nil
+	}
+}
+
 func (devconf *DeviceConfig) matchesProperties(ud *udev.Device) bool {
 	for property, value := range devconf.MatchProperties {
 		if ud.PropertyValue(property) != value {
@@ -80,33 +116,7 @@ func createDevicePlugins(config Config) (map[string]*Stub, error) {
 		klog.Infof("Setting up device %s with socket path %s and devices %s", resourceName, socketPath, devs)
 		dp := NewDevicePluginStub(devs, socketPath, resourceName, false, false)
 
-		dp.SetAllocFunc(func(r *pluginapi.AllocateRequest, devs map[string]pluginapi.Device) (*pluginapi.AllocateResponse, error) {
-			var responses pluginapi.AllocateResponse
-			for _, req := range r.ContainerRequests {
-				response := &pluginapi.ContainerAllocateResponse{}
-				for _, requestID := range req.DevicesIDs {
-					dev, ok := devs[requestID]
-					if !ok {
-						return nil, fmt.Errorf("invalid allocation request with non-existing device %s", requestID)
-					}
-
-					if dev.Health != pluginapi.Healthy {
-						return nil, fmt.Errorf("invalid allocation request with unhealthy device: %s", requestID)
-					}
-
-					ud := u.NewDeviceFromSyspath(dev.ID)
-					hp, _ := ud.DevlinkIterator().Next()
-					response.Devices = append(response.Devices, &pluginapi.DeviceSpec{
-						ContainerPath: devconf.ContainerPath,
-						HostPath:      hp.(string),
-						Permissions:   devconf.Permissions,
-					})
-				}
-				responses.ContainerResponses = append(responses.ContainerResponses, response)
-			}
-
-			return &responses, nil
-		})
+		dp.SetAllocFunc(config.allocFuncFor(resourceName))
 
 		if err := dp.Start(); err != nil {
 			return dps, fmt.Errorf("failed to start device plugin: %s", err)

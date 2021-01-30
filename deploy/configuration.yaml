@@ -10,6 +10,7 @@ data:
       "devices": {
         "addem.se/dev_yanzi_serial_radio": {
           "containerPath": "/dev/yanzi-serial-radio",
+          "permissions": "rw",
           "matchProperties": {
             "SUBSYSTEM": "tty",
             "ID_VENDOR": "Texas_Instruments",
@@ -18,6 +19,7 @@ data:
         },
         "addem.se/dev_deconz_conbee": {
           "containerPath": "/dev/deconz-conbee",
+          "permissions": "rw",
           "matchProperties": {
             "SUBSYSTEM": "tty",
             "ID_VENDOR": "FTDI",
