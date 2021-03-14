@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
@@ -153,6 +154,10 @@ func main() {
 		klog.Fatalf("failed to create device plugins: %s\n", err)
 	}
 
+	var u udev.Udev
+	mon := u.NewMonitorFromNetlink("udev")
+	devices, err := mon.DeviceChan(context.Background())
+
 	restart := false
 	for {
 		if restart {
@@ -177,6 +182,10 @@ func main() {
 
 		case err := <-kubeletWatcher.Errors:
 			klog.Infof("inotify: %s", err)
+
+		case dev := <-devices:
+			klog.Infof("device channel: %+v", dev)
+			restart = true
 
 		case s := <-sigWatcher:
 			switch s {
