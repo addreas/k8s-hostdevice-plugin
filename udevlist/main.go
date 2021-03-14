@@ -1,52 +1,87 @@
 package main
 
 import (
-	"context"
-	"fmt"
+	"log"
+	"os"
+	"os/signal"
+	"syscall"
 
-	udev "github.com/jochenvg/go-udev"
+	"github.com/pilebones/go-udev/crawler"
+	"github.com/pilebones/go-udev/netlink"
 )
 
 func main() {
-	u := udev.Udev{}
-	e := u.NewEnumerate()
-	e.AddMatchIsInitialized()
-	ds, _ := e.Devices()
-	fmt.Println("Devices:")
-	for _, d := range ds {
-		printDevice(d)
-		fmt.Printf("---")
-	}
+	info(nil)
+	monitor(nil)
+}
 
-	mon := u.NewMonitorFromNetlink("udev")
-	devices, err := mon.DeviceChan(context.Background())
-	if err != nil {
-		fmt.Printf("err: %s", err)
-	}
+func info(matcher netlink.Matcher) {
+	log.Println("Get existing devices...")
+
+	queue := make(chan crawler.Device)
+	errors := make(chan error)
+	quit := crawler.ExistingDevices(queue, errors, matcher)
+
+	// Signal handler to quit properly monitor mode
+	signals := make(chan os.Signal, 1)
+	signal.Notify(signals, syscall.SIGINT, syscall.SIGTERM, syscall.SIGQUIT)
+	go func() {
+		<-signals
+		log.Println("Exiting info mode...")
+		close(quit)
+		os.Exit(0)
+	}()
+
+	// Handling message from queue
 	for {
-
 		select {
-		case dev := <-devices:
-			fmt.Println("Update: ")
-			printDevice(dev)
-
+		case device, more := <-queue:
+			if !more {
+				log.Printf("Finished processing existing devices\n")
+				return
+			}
+			log.Println("Detect device at", device.KObj, "with env", device.Env)
+		case err := <-errors:
+			log.Println("ERROR:", err)
 		}
 	}
 }
 
-func printDevice(d *udev.Device) {
-	fmt.Printf("Sysname: %s\n", d.Syspath())
-	fmt.Printf("Devpath: %s\n", d.Devpath())
+// monitor run monitor mode
+func monitor(matcher netlink.Matcher) {
+	log.Println("Monitoring UEvent kernel message to user-space...")
 
-	for l, _ := range d.Devlinks() {
-		fmt.Printf("Link: %s\n", l)
+	conn := new(netlink.UEventConn)
+	if err := conn.Connect(netlink.UdevEvent); err != nil {
+		log.Fatalln("Unable to connect to Netlink Kobject UEvent socket")
+	}
+	defer conn.Close()
+
+	queue := make(chan netlink.UEvent)
+	errors := make(chan error)
+	quit := conn.Monitor(queue, errors, matcher)
+
+	// Signal handler to quit properly monitor mode
+	signals := make(chan os.Signal, 1)
+	signal.Notify(signals, syscall.SIGINT, syscall.SIGTERM, syscall.SIGQUIT)
+	go func() {
+		<-signals
+		log.Println("Exiting monitor mode...")
+		close(quit)
+		os.Exit(0)
+	}()
+
+	for {
+		select {
+		case uevent := <-queue:
+			device := crawler.Device{
+				KObj: uevent.KObj,
+				Env:  uevent.Env,
+			}
+			log.Println("Detect device at", device.KObj, "with env", device.Env)
+		case err := <-errors:
+			log.Println("ERROR:", err)
+		}
 	}
 
-	for tk, tv := range d.Tags() {
-		fmt.Printf("Tag: %s, Value: %s\n", tk, tv)
-	}
-
-	for pk, pv := range d.Properties() {
-		fmt.Printf("Property: %s, Value: %s\n", pk, pv)
-	}
 }

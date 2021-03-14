@@ -5,12 +5,14 @@ import (
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
+	"log"
 	"os"
 	"strings"
 	"syscall"
 
 	"github.com/fsnotify/fsnotify"
-	"github.com/jochenvg/go-udev"
+	"github.com/pilebones/go-udev/crawler"
+	"github.com/pilebones/go-udev/netlink"
 	"k8s.io/klog/v2"
 	pluginapi "k8s.io/kubelet/pkg/apis/deviceplugin/v1beta1"
 )
@@ -43,7 +45,6 @@ func (config *Config) load() error {
 }
 
 func (config *Config) allocFuncFor(resourceName string) stubAllocFunc {
-	var u udev.Udev
 	devconf := config.Devices[resourceName]
 	return func(r *pluginapi.AllocateRequest, devs map[string]pluginapi.Device) (*pluginapi.AllocateResponse, error) {
 		var responses pluginapi.AllocateResponse
@@ -63,11 +64,9 @@ func (config *Config) allocFuncFor(resourceName string) stubAllocFunc {
 					return nil, fmt.Errorf("permissions for device cannot be empty for device %s", requestID)
 				}
 
-				ud := u.NewDeviceFromSyspath(dev.ID)
-				hp, _ := ud.DevlinkIterator().Next()
 				response.Devices = append(response.Devices, &pluginapi.DeviceSpec{
+					HostPath:      dev.ID + "/device",
 					ContainerPath: devconf.ContainerPath,
-					HostPath:      hp.(string),
 					Permissions:   devconf.Permissions,
 				})
 			}
@@ -78,59 +77,78 @@ func (config *Config) allocFuncFor(resourceName string) stubAllocFunc {
 	}
 }
 
-func (devconf *DeviceConfig) matchesProperties(ud *udev.Device) bool {
-	for property, value := range devconf.MatchProperties {
-		if ud.PropertyValue(property) != value {
-			return false
+func getExisting(matcher netlink.Matcher) []*pluginapi.Device {
+	queue := make(chan crawler.Device)
+	errors := make(chan error)
+	crawler.ExistingDevices(queue, errors, matcher)
+
+	devices := make([]*pluginapi.Device, 10)
+	for {
+		select {
+		case device, more := <-queue:
+			devices = append(devices, &pluginapi.Device{
+				ID:     device.KObj,
+				Health: pluginapi.Healthy,
+			})
+			if !more {
+				return devices
+			}
+			log.Println("Detect device at", device.KObj, "with env", device.Env)
+		case err := <-errors:
+			log.Println("ERROR:", err)
 		}
 	}
-	return true
 }
 
-func createDevicePlugins(config Config) (map[string]*Stub, error) {
-	dps := make(map[string]*Stub)
-	var u udev.Udev
+func runDevicePlugins(ctx context.Context, config Config) chan error {
 	socketDir := pluginapi.DevicePluginPath + config.SocketPrefix + "/"
 	os.MkdirAll(socketDir, 0755)
 
-	udevs, err := u.NewEnumerate().Devices()
-	if err != nil {
-		return nil, fmt.Errorf("failed to list udev devices: %s", err)
-	}
+	outerErr := make(chan error)
 
 	for resourceName, devconf := range config.Devices {
 		socketPath := fmt.Sprintf("%s%s.sock", socketDir, strings.Replace(resourceName, "/", "-", -1))
 
-		devs := []*pluginapi.Device{}
-
-		for _, ud := range udevs {
-			if !devconf.matchesProperties(ud) {
-				continue
-			}
-
-			devs = append(devs, &pluginapi.Device{
-				ID:     ud.Syspath(),
-				Health: pluginapi.Healthy,
-			})
+		matcher := &netlink.RuleDefinition{
+			Env: devconf.MatchProperties,
 		}
+		devices := getExisting(matcher)
 
-		klog.Infof("Setting up device %s with socket path %s and devices %s", resourceName, socketPath, devs)
-		dp := NewDevicePluginStub(devs, socketPath, resourceName, false, false)
-
+		klog.Infof("Setting up device %s with socket path %s and devices %s", resourceName, socketPath, devices)
+		dp := NewDevicePluginStub(devices, socketPath, resourceName, false, false)
 		dp.SetAllocFunc(config.allocFuncFor(resourceName))
 
 		if err := dp.Start(); err != nil {
-			return dps, fmt.Errorf("failed to start device plugin: %s", err)
+			outerErr <- fmt.Errorf("failed to start device plugin: %s", err)
 		}
 
 		if err := dp.Register(pluginapi.KubeletSocket, resourceName, socketDir); err != nil {
-			return dps, fmt.Errorf("failed to register device plugin: %s", err)
+			outerErr <- fmt.Errorf("failed to register device plugin: %s", err)
 		}
 
-		dps[resourceName] = dp
+		conn := new(netlink.UEventConn)
+		defer conn.Close()
+		update := make(chan netlink.UEvent)
+		errors := make(chan error)
+		quit := conn.Monitor(update, errors, matcher)
+
+		go func() {
+			for {
+				select {
+				case <-ctx.Done():
+					dp.Stop()
+					close(quit)
+				case <-update:
+					dp.Update(getExisting(matcher))
+				case err := <-errors:
+					klog.Errorf("received error from udev watch: %s\n", err)
+					outerErr <- err
+				}
+			}
+		}()
 	}
 
-	return dps, nil
+	return outerErr
 }
 
 func main() {
@@ -149,55 +167,42 @@ func main() {
 		klog.Fatalf("failed to load config: %s\n", err)
 	}
 
-	dps, err := createDevicePlugins(config)
-	if err != nil {
-		klog.Fatalf("failed to create device plugins: %s\n", err)
-	}
+	state := "run"
+	ctx, cancel := context.WithCancel(context.Background())
+	errors := runDevicePlugins(ctx, config)
 
-	var u udev.Udev
-	mon := u.NewMonitorFromNetlink("udev")
-	devices, err := mon.DeviceChan(context.Background())
-
-	restart := false
-	for {
-		if restart {
-			restart = false
-			for _, dp := range dps {
-				dp.Stop()
-			}
-
+	for state != "stop" {
+		if state == "restart" {
+			state = "run"
+			cancel()
+			ctx, cancel = context.WithCancel(context.Background())
 			config.load()
-			dps, err = createDevicePlugins(config)
-			if err != nil {
-				klog.Fatalf("failed to create device plugins: %s\n", err)
-			}
+			errors = runDevicePlugins(ctx, config)
 		}
 
 		select {
 		case event := <-kubeletWatcher.Events:
 			if event.Name == pluginapi.KubeletSocket && event.Op&fsnotify.Create == fsnotify.Create {
 				klog.Infof("inotify: %s created, restarting.", pluginapi.KubeletSocket)
-				restart = true
+				state = "restart"
 			}
 
 		case err := <-kubeletWatcher.Errors:
 			klog.Infof("inotify: %s", err)
 
-		case dev := <-devices:
-			klog.Infof("device channel: %+v", dev)
-			restart = true
+		case err := <-errors:
+			klog.Errorf("error in device plugin: %s", err)
 
 		case s := <-sigWatcher:
 			switch s {
 			case syscall.SIGHUP:
 				klog.Infoln("Received SIGHUP, restarting.")
-				restart = true
+				state = "restart"
 			default:
 				klog.Infof("Received signal \"%v\", shutting down.", s)
-				for _, dp := range dps {
-					dp.Stop()
-				}
+				state = "stop"
 			}
 		}
 	}
+	cancel()
 }
