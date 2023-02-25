@@ -1,10 +1,5 @@
-ARG GOLANG_VERSION=1.15
-FROM docker.io/golang:${GOLANG_VERSION} AS builder
+FROM docker.io/golang:1.20 AS builder
 LABEL org.opencontainers.image.source https://github.com/addreas/k8s-hostdevice-plugin
-
-ENV \
-	OUTDIR='/out' \
-	GO111MODULE='on'
 
 RUN set -eux && \
 	apt-get update && apt-get install -y --no-install-recommends \
@@ -15,14 +10,10 @@ WORKDIR /mod
 
 COPY go.mod /mod/
 COPY go.sum /mod/
-RUN set -eux && \
-	go mod download
-COPY . /mod/
-RUN set -eux && \
-	CGO_ENABLED=1 GOOS=linux GOBIN=/bin go install \
-	./...
-RUN rm -r /go /usr
+RUN go mod download
 
-FROM scratch
-COPY --from=builder / /
+COPY . /mod/
+
+RUN CGO_ENABLED=1 GOOS=linux GOBIN=/bin go install ./...
+
 ENTRYPOINT ["k8s-hostdevice-plugin"]
