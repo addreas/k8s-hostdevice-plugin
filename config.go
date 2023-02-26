@@ -62,7 +62,7 @@ func (devconf *DeviceConfig) getPluginDevices() ([]*pluginapi.Device, error) {
 		return nil, err
 	}
 
-	out := make([]*pluginapi.Device, len(udevs))
+	out := []*pluginapi.Device{}
 	for _, ud := range udevs {
 		if ud != nil && devconf.matchesProperties(ud) {
 			out = append(out, pluginDevice(ud))
