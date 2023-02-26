@@ -16,32 +16,18 @@ import (
 
 func createDevicePlugins(config Config) (map[string]*HostDevicePlugin, error) {
 	dps := make(map[string]*HostDevicePlugin)
-	var u udev.Udev
 	os.MkdirAll(path.Join(pluginapi.DevicePluginPath, config.SocketPrefix), 0755)
-
-	udevs, err := u.NewEnumerate().Devices()
-	if err != nil {
-		return nil, fmt.Errorf("failed to list udev devices: %s", err)
-	}
 
 	for resourceName, devconf := range config.Devices {
 		safeName := strings.Replace(resourceName, "/", "-", -1)
 		socketPath := path.Join(pluginapi.DevicePluginPath, config.SocketPrefix, safeName+".sock")
 
-		devs := []*pluginapi.Device{}
-
-		for _, ud := range udevs {
-			if !devconf.matchesProperties(ud) {
-				continue
-			}
-
-			devs = append(devs, &pluginapi.Device{
-				ID:     ud.Syspath(),
-				Health: pluginapi.Healthy,
-			})
+		devs, err := devconf.getPluginDevices()
+		if err != nil {
+			return nil, fmt.Errorf("failed to list udev devices: %s", err)
 		}
 
-		klog.Infof("Setting up device %s with socket path %s and devices %s", resourceName, socketPath, devs)
+		klog.Infof("Setting up device %s with devices %s", resourceName, devs)
 		dp := NewHostDevicePlugin(devs, socketPath, resourceName, &devconf)
 
 		if err := dp.Start(); err != nil {
@@ -79,11 +65,12 @@ func main() {
 		klog.Fatalf("failed to create device plugins: %s\n", err)
 	}
 
-	var u udev.Udev
+	klog.Infoln("Starting udev watcher.")
+	u := udev.Udev{}
 	mon := u.NewMonitorFromNetlink("udev")
 	devices, err := mon.DeviceChan(context.Background())
 	if err != nil {
-		klog.Fatalf("failed to creat udev monitor chan: %s\n", err)
+		klog.Fatalf("failed to create udev monitor chan: %s\n", err)
 	}
 
 	restart := false
@@ -113,8 +100,17 @@ L:
 			klog.Infof("inotify: %s", err)
 
 		case dev := <-devices:
-			klog.Infof("device channel: %+v", dev)
-			restart = true
+			klog.Infof("udev update: %v", dev)
+			for _, dp := range dps {
+				if dp.deviceConfig.matchesProperties(dev) {
+					devs, err := dp.deviceConfig.getPluginDevices()
+					if err != nil {
+						klog.Fatalf("failed to get devices for %s", dp.deviceConfig.ContainerPath)
+					}
+					klog.Infof("updated devices to %#v for %s because of %s event", devs, dp.deviceConfig.ContainerPath, dev.Action())
+					dp.Update(devs)
+				}
+			}
 
 		case s := <-sigWatcher:
 			switch s {

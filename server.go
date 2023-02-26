@@ -69,17 +69,19 @@ func NewHostDevicePlugin(devs []*pluginapi.Device, socket string, name string, c
 	}
 }
 
-// dial establishes the gRPC communication with the registered device plugin.
+// dial establishes the gRPC communication with the registered device plugin. https://godoc.org/google.golang.org/grpc#Dial
 func dial(unixSocketPath string, timeout time.Duration) (*grpc.ClientConn, error) {
-	c, err := grpc.Dial(unixSocketPath, grpc.WithInsecure(), grpc.WithBlock(),
-		grpc.WithTimeout(timeout),
-		grpc.WithDialer(func(addr string, timeout time.Duration) (net.Conn, error) {
-			return net.DialTimeout("unix", addr, timeout)
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+
+	c, err := grpc.DialContext(ctx, unixSocketPath, grpc.WithInsecure(), grpc.WithBlock(),
+		grpc.WithContextDialer(func(ctx context.Context, addr string) (net.Conn, error) {
+			return (&net.Dialer{}).DialContext(ctx, "unix", addr)
 		}),
 	)
 
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to dial device plugin:"+" %v", err)
 	}
 
 	return c, nil
@@ -193,7 +195,7 @@ func (m *HostDevicePlugin) Allocate(ctx context.Context, r *pluginapi.AllocateRe
 		devs[dev.ID] = *dev
 	}
 
-	var u udev.Udev
+	u := udev.Udev{}
 	var responses pluginapi.AllocateResponse
 	for _, req := range r.ContainerRequests {
 		response := &pluginapi.ContainerAllocateResponse{}
@@ -212,10 +214,10 @@ func (m *HostDevicePlugin) Allocate(ctx context.Context, r *pluginapi.AllocateRe
 			}
 
 			ud := u.NewDeviceFromSyspath(dev.ID)
-			hp, _ := ud.DevlinkIterator().Next()
+			hostPath, _ := ud.DevlinkIterator().Next()
 			response.Devices = append(response.Devices, &pluginapi.DeviceSpec{
 				ContainerPath: m.deviceConfig.ContainerPath,
-				HostPath:      hp.(string),
+				HostPath:      hostPath.(string),
 				Permissions:   m.deviceConfig.Permissions,
 			})
 		}

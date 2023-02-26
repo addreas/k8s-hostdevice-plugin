@@ -16,4 +16,6 @@ COPY . /mod/
 
 RUN CGO_ENABLED=1 GOOS=linux GOBIN=/bin go install ./...
 
+RUN apt-get purge --autoremove gcc g++ git gpg wget curl subversion python3 openssh-client perl
+
 ENTRYPOINT ["k8s-hostdevice-plugin"]

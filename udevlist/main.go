@@ -11,11 +11,12 @@ func main() {
 	u := udev.Udev{}
 	e := u.NewEnumerate()
 	e.AddMatchIsInitialized()
+	e.AddMatchProperty("SUBSYSTEM", "tty")
 	ds, _ := e.Devices()
 	fmt.Println("Devices:")
 	for _, d := range ds {
 		printDevice(d)
-		fmt.Printf("---")
+		fmt.Printf("\n---\n")
 	}
 
 	mon := u.NewMonitorFromNetlink("udev")
@@ -23,18 +24,16 @@ func main() {
 	if err != nil {
 		fmt.Printf("err: %s", err)
 	}
-	for {
 
-		select {
-		case dev := <-devices:
-			fmt.Println("Update: ")
-			printDevice(dev)
-
-		}
+	for dev := range devices {
+		fmt.Println("Update: ")
+		printDevice(dev)
 	}
 }
 
 func printDevice(d *udev.Device) {
+	fmt.Println()
+	fmt.Printf("Action: %s\n", d.Action())
 	fmt.Printf("Sysname: %s\n", d.Syspath())
 	fmt.Printf("Devpath: %s\n", d.Devpath())
 
@@ -49,4 +48,5 @@ func printDevice(d *udev.Device) {
 	for pk, pv := range d.Properties() {
 		fmt.Printf("Property: %s, Value: %s\n", pk, pv)
 	}
+	fmt.Println()
 }

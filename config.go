@@ -7,6 +7,7 @@ import (
 
 	"github.com/jochenvg/go-udev"
 	"k8s.io/klog/v2"
+	pluginapi "k8s.io/kubelet/pkg/apis/deviceplugin/v1beta1"
 )
 
 // Config specifies common options
@@ -43,4 +44,34 @@ func (devconf *DeviceConfig) matchesProperties(ud *udev.Device) bool {
 		}
 	}
 	return true
+}
+
+func (devconf *DeviceConfig) getDevices() ([]*udev.Device, error) {
+	u := udev.Udev{}
+	e := u.NewEnumerate()
+	e.AddMatchIsInitialized()
+	for property, value := range devconf.MatchProperties {
+		e.AddMatchProperty(property, value)
+	}
+	return e.Devices()
+}
+
+func (devconf *DeviceConfig) getPluginDevices() ([]*pluginapi.Device, error) {
+	udevs, err := devconf.getDevices()
+	if err != nil {
+		return nil, err
+	}
+
+	out := make([]*pluginapi.Device, len(udevs))
+	for _, ud := range udevs {
+		out = append(out, pluginDevice(ud))
+	}
+	return out, nil
+}
+
+func pluginDevice(ud *udev.Device) *pluginapi.Device {
+	return &pluginapi.Device{
+		ID:     ud.Syspath(),
+		Health: pluginapi.Healthy,
+	}
 }

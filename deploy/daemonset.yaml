@@ -26,9 +26,9 @@ spec:
       - image: ghcr.io/addreas/k8s-hostdevice-plugin:latest
         name: plugin
         securityContext:
-          allowPrivilegeEscalation: false
-          capabilities:
-            drop: ["ALL"]
+          # allowPrivilegeEscalation: false
+          # capabilities:
+          #   drop: ["ALL"]
         volumeMounts:
           - name: device-plugin
             mountPath: /var/lib/kubelet/device-plugins
