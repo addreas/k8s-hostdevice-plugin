@@ -1,4 +1,5 @@
-FROM docker.io/golang:1.20 AS builder
+FROM docker.io/golang:1.20 as build
+
 LABEL org.opencontainers.image.source https://github.com/addreas/k8s-hostdevice-plugin
 
 RUN set -eux && \
@@ -6,16 +7,17 @@ RUN set -eux && \
 	libudev-dev \
 	&& rm -rf /var/lib/apt/lists/*
 
-WORKDIR /mod
+WORKDIR /go/src/app
 
-COPY go.mod /mod/
-COPY go.sum /mod/
+COPY go.mod .
+COPY go.sum .
 RUN go mod download
 
-COPY . /mod/
+COPY . .
+RUN GOBIN=/go/bin go install ./...
 
-RUN CGO_ENABLED=1 GOOS=linux GOBIN=/bin go install ./...
-
-RUN apt-get purge --autoremove gcc g++ git gpg wget curl subversion python3 openssh-client perl
-
+# Now copy it into our base image.
+FROM gcr.io/distroless/base-debian11:debug
+COPY --from=build  /usr/lib/x86_64-linux-gnu/*libudev* /usr/lib/x86_64-linux-gnu/
+COPY --from=build /go/bin /bin
 ENTRYPOINT ["k8s-hostdevice-plugin"]
