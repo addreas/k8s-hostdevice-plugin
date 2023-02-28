@@ -42,6 +42,8 @@ func createDevicePlugins(config Config) (map[string]*HostDevicePlugin, error) {
 		dps[resourceName] = dp
 	}
 
+	klog.Info("set up dps", dps)
+
 	return dps, nil
 }
 
