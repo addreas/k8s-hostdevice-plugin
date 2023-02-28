@@ -67,6 +67,7 @@ func main() {
 	if err != nil {
 		klog.Fatalf("failed to create device plugins: %s\n", err)
 	}
+	klog.Infof("created %d plugins: %s", len(dps), dps)
 
 	klog.Infoln("Starting udev watcher.")
 	u := udev.Udev{}
@@ -96,7 +97,7 @@ L:
 			if err != nil {
 				klog.Fatalf("failed to create device plugins: %s\n", err)
 			}
-			klog.Info("restarted")
+			klog.Infof("created %d plugins: %s", len(dps), dps)
 		}
 
 		klog.Info("selecting")

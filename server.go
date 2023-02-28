@@ -41,7 +41,8 @@ type HostDevicePlugin struct {
 
 	stop chan interface{}
 	// wg     sync.WaitGroup
-	update chan []*pluginapi.Device
+	updates map[int64]chan []*pluginapi.Device
+	seqid   int64
 
 	server *grpc.Server
 
@@ -62,8 +63,8 @@ func NewHostDevicePlugin(devs []*pluginapi.Device, socket string, name string, c
 		// preStartContainerFlag:      preStartContainerFlag,
 		// getPreferredAllocationFlag: getPreferredAllocationFlag,
 
-		stop:   make(chan interface{}),
-		update: make(chan []*pluginapi.Device),
+		stop:    make(chan interface{}),
+		updates: make(map[int64]chan []*pluginapi.Device),
 
 		deviceConfig: config,
 	}
@@ -170,11 +171,19 @@ func (m *HostDevicePlugin) ListAndWatch(e *pluginapi.Empty, s pluginapi.DevicePl
 
 	s.Send(&pluginapi.ListAndWatchResponse{Devices: m.devs})
 
+	ch := make(chan []*pluginapi.Device)
+	reqid := m.seqid
+	m.seqid += 1
+	m.updates[m.seqid] = ch
 	for {
 		select {
+		case <-s.Context().Done():
+			close(ch)
+			delete(m.updates, reqid)
+			return nil
 		case <-m.stop:
 			return nil
-		case updated := <-m.update:
+		case updated := <-ch:
 			s.Send(&pluginapi.ListAndWatchResponse{Devices: updated})
 		}
 	}
@@ -198,7 +207,10 @@ func (m *HostDevicePlugin) Update(devs []*pluginapi.Device) {
 	}
 
 	m.devs = devs
-	m.update <- devs
+
+	for _, ch := range m.updates {
+		ch <- devs
+	}
 }
 
 // Allocate does a mock allocation
