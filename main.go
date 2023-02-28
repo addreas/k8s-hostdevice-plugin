@@ -74,7 +74,7 @@ func main() {
 		klog.Fatalf("failed to create udev monitor chan: %s\n", err)
 	}
 
-	ticker := time.NewTicker(time.Minute)
+	ticker := time.NewTicker(time.Second * 5)
 	defer ticker.Stop()
 
 	restart := false
@@ -104,11 +104,14 @@ L:
 			klog.Infof("inotify: %s", err)
 
 		case <-ticker.C:
+			klog.V(1).Info("tick")
 			for _, dp := range dps {
 				devs, err := dp.deviceConfig.getPluginDevices()
 				if err == nil {
 					klog.Infof("updated devices to %#v for %s", devs, dp.deviceConfig.ContainerPath)
 					dp.Update(devs)
+				} else {
+					klog.Errorf("failed to get devices for %s: %s", dp.deviceConfig.ContainerPath, err)
 				}
 			}
 
@@ -118,7 +121,7 @@ L:
 				if dp.deviceConfig.matchesProperties(dev) {
 					devs, err := dp.deviceConfig.getPluginDevices()
 					if err != nil {
-						klog.Fatalf("failed to get devices for %s", dp.deviceConfig.ContainerPath)
+						klog.Fatalf("failed to get devices for %s: %s", dp.deviceConfig.ContainerPath, err)
 					}
 					klog.Infof("updated devices to %#v for %s because of %s event", devs, dp.deviceConfig.ContainerPath, dev.Action())
 					dp.Update(devs)

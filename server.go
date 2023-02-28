@@ -182,6 +182,22 @@ func (m *HostDevicePlugin) ListAndWatch(e *pluginapi.Empty, s pluginapi.DevicePl
 
 // Update allows the device plugin to send new devices through ListAndWatch
 func (m *HostDevicePlugin) Update(devs []*pluginapi.Device) {
+	if len(m.devs) > 0 && len(devs) == 0 {
+		unhealthyDevs := []*pluginapi.Device{}
+		for _, d := range m.devs {
+			unhealthyDevs = append(unhealthyDevs, &pluginapi.Device{
+				ID:                   d.ID,
+				Topology:             d.Topology,
+				XXX_NoUnkeyedLiteral: d.XXX_NoUnkeyedLiteral,
+				XXX_sizecache:        d.XXX_sizecache,
+				Health:               pluginapi.Unhealthy,
+			})
+		}
+
+		devs = unhealthyDevs
+	}
+
+	m.devs = devs
 	m.update <- devs
 }
 
