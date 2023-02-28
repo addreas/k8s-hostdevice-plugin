@@ -74,8 +74,8 @@ func main() {
 		klog.Fatalf("failed to create udev monitor chan: %s\n", err)
 	}
 
-	tick := time.NewTimer(time.Minute)
-	defer tick.Stop()
+	ticker := time.NewTicker(time.Minute)
+	defer ticker.Stop()
 
 	restart := false
 L:
@@ -103,7 +103,7 @@ L:
 		case err := <-kubeletWatcher.Errors:
 			klog.Infof("inotify: %s", err)
 
-		case <-tick.C:
+		case <-ticker.C:
 			for _, dp := range dps {
 				devs, err := dp.deviceConfig.getPluginDevices()
 				if err == nil {
