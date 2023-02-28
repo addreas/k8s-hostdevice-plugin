@@ -76,7 +76,7 @@ func main() {
 		klog.Fatalf("failed to create udev monitor chan: %s\n", err)
 	}
 
-	ticker := time.NewTicker(time.Second * 5)
+	ticker := time.NewTicker(time.Hour)
 	defer ticker.Stop()
 
 	defer klog.Info("deferred done")
@@ -115,9 +115,9 @@ L:
 			klog.Info("tick")
 			for _, dp := range dps {
 				klog.Info("getting plugin devices for ", dp.socket, " ", dp.deviceConfig)
-				devs, err := dp.deviceConfig.getPluginDevices()
+				devs, err := dp.deviceConfig.getPluginDevices() // This is actually a bit slow
 				if err == nil {
-					klog.Infof("updating devices to %#v for %s", devs, dp.deviceConfig.ContainerPath)
+					klog.Infof("updating devices to %#v for %s", devs, dp.deviceConfig.ContainerPath) // dp.deviceConfig.ContainerPath gets overwritten somewhere!
 					dp.Update(devs)
 					klog.Infof("updated.")
 				} else {
