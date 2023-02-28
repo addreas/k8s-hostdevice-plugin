@@ -39,10 +39,9 @@ func createDevicePlugins(config Config) (map[string]*HostDevicePlugin, error) {
 			return dps, fmt.Errorf("failed to register device plugin: %s", err)
 		}
 
+		klog.Info("Setting dps[%s] to %v", resourceName, dp)
 		dps[resourceName] = dp
 	}
-
-	klog.Info("set up dps ", dps)
 
 	return dps, nil
 }
@@ -115,10 +114,12 @@ L:
 		case <-ticker.C:
 			klog.Info("tick")
 			for _, dp := range dps {
+				klog.Info("getting plugin devices for ", dp.socket, " ", dp.deviceConfig)
 				devs, err := dp.deviceConfig.getPluginDevices()
 				if err == nil {
-					klog.Infof("updated devices to %#v for %s", devs, dp.deviceConfig.ContainerPath)
+					klog.Infof("updating devices to %#v for %s", devs, dp.deviceConfig.ContainerPath)
 					dp.Update(devs)
+					klog.Infof("updated.")
 				} else {
 					klog.Errorf("failed to get devices for %s: %s", dp.deviceConfig.ContainerPath, err)
 				}

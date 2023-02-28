@@ -55,9 +55,13 @@ type HostDevicePlugin struct {
 }
 
 // NewHostDevicePlugin returns an initialized DevicePlugin Stub.
-func NewHostDevicePlugin(devs []*pluginapi.Device, socket string, name string, config *DeviceConfig) *HostDevicePlugin {
+func NewHostDevicePlugin(devs []pluginapi.Device, socket string, name string, config *DeviceConfig) *HostDevicePlugin {
+	var dds []*pluginapi.Device
+	for _, d := range devs {
+		dds = append(dds, &d)
+	}
 	return &HostDevicePlugin{
-		devs:         devs,
+		devs:         dds,
 		socket:       socket,
 		resourceName: name,
 		// preStartContainerFlag:      preStartContainerFlag,
@@ -190,11 +194,25 @@ func (m *HostDevicePlugin) ListAndWatch(e *pluginapi.Empty, s pluginapi.DevicePl
 }
 
 // Update allows the device plugin to send new devices through ListAndWatch
-func (m *HostDevicePlugin) Update(devs []*pluginapi.Device) {
-	if len(m.devs) > 0 && len(devs) == 0 {
-		unhealthyDevs := []*pluginapi.Device{}
+func (m *HostDevicePlugin) Update(newDevs []pluginapi.Device) {
+	var devs []*pluginapi.Device
+	if len(m.devs) == len(newDevs) {
+		diff := false
+		for _, nd := range newDevs {
+			for _, od := range m.devs {
+				if nd.ID != od.ID {
+					diff = true
+				}
+			}
+			devs = append(devs, &nd)
+		}
+		if !diff {
+			devs = m.devs
+		}
+	}
+	if len(m.devs) > 0 && len(newDevs) == 0 {
 		for _, d := range m.devs {
-			unhealthyDevs = append(unhealthyDevs, &pluginapi.Device{
+			devs = append(devs, &pluginapi.Device{
 				ID:                   d.ID,
 				Topology:             d.Topology,
 				XXX_NoUnkeyedLiteral: d.XXX_NoUnkeyedLiteral,
@@ -202,12 +220,9 @@ func (m *HostDevicePlugin) Update(devs []*pluginapi.Device) {
 				Health:               pluginapi.Unhealthy,
 			})
 		}
-
-		devs = unhealthyDevs
 	}
 
 	m.devs = devs
-
 	for _, ch := range m.updates {
 		ch <- devs
 	}
