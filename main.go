@@ -7,6 +7,7 @@ import (
 	"path"
 	"strings"
 	"syscall"
+	"time"
 
 	"github.com/fsnotify/fsnotify"
 	"github.com/jochenvg/go-udev"
@@ -73,6 +74,9 @@ func main() {
 		klog.Fatalf("failed to create udev monitor chan: %s\n", err)
 	}
 
+	tick := time.NewTimer(time.Minute)
+	defer tick.Stop()
+
 	restart := false
 L:
 	for {
@@ -98,6 +102,15 @@ L:
 
 		case err := <-kubeletWatcher.Errors:
 			klog.Infof("inotify: %s", err)
+
+		case <-tick.C:
+			for _, dp := range dps {
+				devs, err := dp.deviceConfig.getPluginDevices()
+				if err == nil {
+					klog.Infof("updated devices to %#v for %s", devs, dp.deviceConfig.ContainerPath)
+					dp.Update(devs)
+				}
+			}
 
 		case dev := <-devices:
 			klog.Infof("udev update: %v", dev)
