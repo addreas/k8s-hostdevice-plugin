@@ -42,7 +42,7 @@ func createDevicePlugins(config Config) (map[string]*HostDevicePlugin, error) {
 		dps[resourceName] = dp
 	}
 
-	klog.Info("set up dps", dps)
+	klog.Info("set up dps ", dps)
 
 	return dps, nil
 }
@@ -79,10 +79,13 @@ func main() {
 	ticker := time.NewTicker(time.Second * 5)
 	defer ticker.Stop()
 
+	defer klog.Info("deferred done")
 	restart := false
 L:
 	for {
+		klog.Info("for")
 		if restart {
+			klog.Info("restart")
 			restart = false
 			for _, dp := range dps {
 				dp.Stop()
@@ -93,10 +96,13 @@ L:
 			if err != nil {
 				klog.Fatalf("failed to create device plugins: %s\n", err)
 			}
+			klog.Info("restarted")
 		}
 
+		klog.Info("selecting")
 		select {
 		case event := <-kubeletWatcher.Events:
+			klog.Info("kubeletwatch event")
 			if event.Name == pluginapi.KubeletSocket && event.Op&fsnotify.Create == fsnotify.Create {
 				klog.Infof("inotify: %s created, restarting.", pluginapi.KubeletSocket)
 				restart = true
@@ -106,7 +112,7 @@ L:
 			klog.Infof("inotify: %s", err)
 
 		case <-ticker.C:
-			klog.V(1).Info("tick")
+			klog.Info("tick")
 			for _, dp := range dps {
 				devs, err := dp.deviceConfig.getPluginDevices()
 				if err == nil {
@@ -131,6 +137,7 @@ L:
 			}
 
 		case s := <-sigWatcher:
+			klog.Infof("sigwatcher %s", s)
 			switch s {
 			case syscall.SIGHUP:
 				klog.Infoln("Received SIGHUP, restarting.")
@@ -143,5 +150,7 @@ L:
 				break L
 			}
 		}
+		klog.Info("selected")
 	}
+	klog.Info("done")
 }
