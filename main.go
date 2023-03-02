@@ -29,7 +29,7 @@ func createDevicePlugins(config Config) (map[string]*HostDevicePlugin, error) {
 		}
 
 		klog.Infof("Setting up device %s with devices %s", resourceName, devs)
-		dp := NewHostDevicePlugin(devs, socketPath, resourceName, &devconf)
+		dp := NewHostDevicePlugin(devs, socketPath, resourceName, devconf)
 
 		if err := dp.Start(); err != nil {
 			return dps, fmt.Errorf("failed to start device plugin: %s", err)
@@ -39,7 +39,7 @@ func createDevicePlugins(config Config) (map[string]*HostDevicePlugin, error) {
 			return dps, fmt.Errorf("failed to register device plugin: %s", err)
 		}
 
-		klog.Info("Setting dps[%s] to %v", resourceName, dp)
+		klog.Infof("Setting dps[%s] to %v", resourceName, dp)
 		dps[resourceName] = dp
 	}
 
@@ -66,7 +66,6 @@ func main() {
 	if err != nil {
 		klog.Fatalf("failed to create device plugins: %s\n", err)
 	}
-	klog.Infof("created %d plugins: %s", len(dps), dps)
 
 	klog.Infoln("Starting udev watcher.")
 	u := udev.Udev{}
@@ -79,13 +78,11 @@ func main() {
 	ticker := time.NewTicker(time.Hour)
 	defer ticker.Stop()
 
-	defer klog.Info("deferred done")
 	restart := false
 L:
 	for {
-		klog.Info("for")
 		if restart {
-			klog.Info("restart")
+			klog.Info("restarting")
 			restart = false
 			for _, dp := range dps {
 				dp.Stop()
@@ -99,7 +96,6 @@ L:
 			klog.Infof("created %d plugins: %s", len(dps), dps)
 		}
 
-		klog.Info("selecting")
 		select {
 		case event := <-kubeletWatcher.Events:
 			klog.Info("kubeletwatch event")
@@ -112,14 +108,12 @@ L:
 			klog.Infof("inotify: %s", err)
 
 		case <-ticker.C:
-			klog.Info("tick")
 			for _, dp := range dps {
 				klog.Info("getting plugin devices for ", dp.socket, " ", dp.deviceConfig)
 				devs, err := dp.deviceConfig.getPluginDevices() // This is actually a bit slow
 				if err == nil {
 					klog.Infof("updating devices to %#v for %s", devs, dp.deviceConfig.ContainerPath) // dp.deviceConfig.ContainerPath gets overwritten somewhere!
 					dp.Update(devs)
-					klog.Infof("updated.")
 				} else {
 					klog.Errorf("failed to get devices for %s: %s", dp.deviceConfig.ContainerPath, err)
 				}

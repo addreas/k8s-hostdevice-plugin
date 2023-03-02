@@ -46,8 +46,7 @@ type HostDevicePlugin struct {
 
 	server *grpc.Server
 
-	// allocFunc is used for handling allocation request
-	deviceConfig *DeviceConfig
+	deviceConfig DeviceConfig
 
 	// registrationStatus chan watcherapi.RegistrationStatus // for testing
 	// endpoint           string                             // for testing
@@ -55,7 +54,7 @@ type HostDevicePlugin struct {
 }
 
 // NewHostDevicePlugin returns an initialized DevicePlugin Stub.
-func NewHostDevicePlugin(devs []pluginapi.Device, socket string, name string, config *DeviceConfig) *HostDevicePlugin {
+func NewHostDevicePlugin(devs []pluginapi.Device, socket string, name string, config DeviceConfig) *HostDevicePlugin {
 	var dds []*pluginapi.Device
 	for _, d := range devs {
 		dds = append(dds, &d)
