@@ -22,13 +22,14 @@ spec:
       # This, along with the annotation above marks this pod as a critical add-on.
       - key: CriticalAddonsOnly
         operator: Exists
+      hostNetwork: true # to allow udev updates to be seen
       containers:
       - image: ghcr.io/addreas/k8s-hostdevice-plugin:latest
         name: plugin
         securityContext:
-          # allowPrivilegeEscalation: false
-          # capabilities:
-          #   drop: ["ALL"]
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop: ["ALL"]
         volumeMounts:
           - name: device-plugin
             mountPath: /var/lib/kubelet/device-plugins

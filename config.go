@@ -56,23 +56,26 @@ func (devconf *DeviceConfig) getDevices() ([]*udev.Device, error) {
 	return e.Devices()
 }
 
-func (devconf *DeviceConfig) getPluginDevices() ([]pluginapi.Device, error) {
+func (devconf *DeviceConfig) getPluginDevices() ([]*pluginapi.Device, error) {
 	udevs, err := devconf.getDevices()
 	if err != nil {
 		return nil, err
 	}
 
-	out := []pluginapi.Device{}
+	out := []*pluginapi.Device{}
 	for _, ud := range udevs {
 		if ud != nil && devconf.matchesProperties(ud) {
 			out = append(out, pluginDevice(ud))
+			klog.Infof("Matched udev device %#v because it matchesProperties for config %#v", ud.Properties(), devconf)
+		} else {
+			// klog.Infof("Ignoring udev device %#v because it didn't matchProperties for config %#v", ud.Properties(), devconf)
 		}
 	}
 	return out, nil
 }
 
-func pluginDevice(ud *udev.Device) pluginapi.Device {
-	return pluginapi.Device{
+func pluginDevice(ud *udev.Device) *pluginapi.Device {
+	return &pluginapi.Device{
 		ID:     ud.Syspath(),
 		Health: pluginapi.Healthy,
 	}

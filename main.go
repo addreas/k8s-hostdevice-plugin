@@ -39,7 +39,6 @@ func createDevicePlugins(config Config) (map[string]*HostDevicePlugin, error) {
 			return dps, fmt.Errorf("failed to register device plugin: %s", err)
 		}
 
-		klog.Infof("Setting dps[%s] to %v", resourceName, dp)
 		dps[resourceName] = dp
 	}
 
@@ -98,42 +97,39 @@ L:
 
 		select {
 		case event := <-kubeletWatcher.Events:
-			klog.Info("kubeletwatch event")
 			if event.Name == pluginapi.KubeletSocket && event.Op&fsnotify.Create == fsnotify.Create {
 				klog.Infof("inotify: %s created, restarting.", pluginapi.KubeletSocket)
 				restart = true
 			}
 
 		case err := <-kubeletWatcher.Errors:
-			klog.Infof("inotify: %s", err)
+			klog.Infof("inotify error: %s", err)
 
 		case <-ticker.C:
 			for _, dp := range dps {
-				klog.Info("getting plugin devices for ", dp.socket, " ", dp.deviceConfig)
-				devs, err := dp.deviceConfig.getPluginDevices() // This is actually a bit slow
+				devs, err := dp.deviceConfig.getPluginDevices()
 				if err == nil {
-					klog.Infof("updating devices to %#v for %s", devs, dp.deviceConfig.ContainerPath) // dp.deviceConfig.ContainerPath gets overwritten somewhere!
-					dp.Update(devs)
+					klog.Infof("updating devices to %#v for %s", devs, dp.deviceConfig.ContainerPath)
+					dp.UpdateDevices(devs)
 				} else {
 					klog.Errorf("failed to get devices for %s: %s", dp.deviceConfig.ContainerPath, err)
 				}
 			}
 
 		case dev := <-devices:
-			klog.Infof("udev update: %v", dev)
 			for _, dp := range dps {
 				if dp.deviceConfig.matchesProperties(dev) {
-					devs, err := dp.deviceConfig.getPluginDevices()
-					if err != nil {
-						klog.Fatalf("failed to get devices for %s: %s", dp.deviceConfig.ContainerPath, err)
+					if dev.Action() == "add" || dev.Action() == "change" || dev.Action() == "online" {
+						klog.Infof("updated device %s for %s because of %s event", dev.Syspath(), dp.deviceConfig.ContainerPath, dev.Action())
+						dp.SetDevice(pluginDevice(dev))
+					} else {
+						klog.Infof("removed device %s for %s because of %s event", dev.Syspath(), dp.deviceConfig.ContainerPath, dev.Action())
+						dp.UnsetDevice(pluginDevice(dev))
 					}
-					klog.Infof("updated devices to %#v for %s because of %s event", devs, dp.deviceConfig.ContainerPath, dev.Action())
-					dp.Update(devs)
 				}
 			}
 
 		case s := <-sigWatcher:
-			klog.Infof("sigwatcher %s", s)
 			switch s {
 			case syscall.SIGHUP:
 				klog.Infoln("Received SIGHUP, restarting.")
@@ -146,7 +142,5 @@ L:
 				break L
 			}
 		}
-		klog.Info("selected")
 	}
-	klog.Info("done")
 }

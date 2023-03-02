@@ -21,14 +21,18 @@ import (
 	"fmt"
 	"net"
 	"os"
-	"path"
+	"strings"
+	"sync"
 	"time"
 
 	"github.com/jochenvg/go-udev"
 	"google.golang.org/grpc"
 
+	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/klog/v2"
 	pluginapi "k8s.io/kubelet/pkg/apis/deviceplugin/v1beta1"
+
+	watcherapi "k8s.io/kubelet/pkg/apis/pluginregistration/v1"
 )
 
 // HostDevicePlugin implementation for DevicePlugin.
@@ -39,8 +43,8 @@ type HostDevicePlugin struct {
 	// preStartContainerFlag      bool
 	// getPreferredAllocationFlag bool
 
-	stop chan interface{}
-	// wg     sync.WaitGroup
+	stop    chan interface{}
+	wg      sync.WaitGroup
 	updates map[int64]chan []*pluginapi.Device
 	seqid   int64
 
@@ -48,23 +52,17 @@ type HostDevicePlugin struct {
 
 	deviceConfig DeviceConfig
 
-	// registrationStatus chan watcherapi.RegistrationStatus // for testing
-	// endpoint           string                             // for testing
+	registrationStatus chan watcherapi.RegistrationStatus // for testing
+	endpoint           string                             // for testing
 
 }
 
 // NewHostDevicePlugin returns an initialized DevicePlugin Stub.
-func NewHostDevicePlugin(devs []pluginapi.Device, socket string, name string, config DeviceConfig) *HostDevicePlugin {
-	var dds []*pluginapi.Device
-	for _, d := range devs {
-		dds = append(dds, &d)
-	}
+func NewHostDevicePlugin(devs []*pluginapi.Device, socket string, name string, config DeviceConfig) *HostDevicePlugin {
 	return &HostDevicePlugin{
-		devs:         dds,
+		devs:         devs,
 		socket:       socket,
 		resourceName: name,
-		// preStartContainerFlag:      preStartContainerFlag,
-		// getPreferredAllocationFlag: getPreferredAllocationFlag,
 
 		stop:    make(chan interface{}),
 		updates: make(map[int64]chan []*pluginapi.Device),
@@ -104,18 +102,32 @@ func (m *HostDevicePlugin) Start() error {
 		return err
 	}
 
+	m.wg.Add(1)
 	m.server = grpc.NewServer([]grpc.ServerOption{}...)
 	pluginapi.RegisterDevicePluginServer(m.server, m)
+	watcherapi.RegisterRegistrationServer(m.server, m)
 
-	go m.server.Serve(sock)
-	klog.Infof("Starting to serve on %v", m.socket)
+	go func() {
+		defer m.wg.Done()
+		m.server.Serve(sock)
+	}()
 
 	// Wait for server to start by launching a blocking connexion
-	conn, err := dial(m.socket, 60*time.Second)
-	if err != nil {
-		return err
+	var lastDialErr error
+	wait.PollImmediate(1*time.Second, 10*time.Second, func() (bool, error) {
+		var conn *grpc.ClientConn
+		conn, lastDialErr = dial(m.socket, 10*time.Second)
+		if lastDialErr != nil {
+			return false, nil
+		}
+		conn.Close()
+		return true, nil
+	})
+	if lastDialErr != nil {
+		return lastDialErr
 	}
-	conn.Close()
+
+	klog.Infof("Starting to serve on %v", m.socket)
 
 	return nil
 }
@@ -128,6 +140,7 @@ func (m *HostDevicePlugin) Stop() error {
 		return nil
 	}
 	m.server.Stop()
+	m.wg.Wait()
 	m.server = nil
 	close(m.stop) // This prevents re-starting the server.
 
@@ -145,8 +158,12 @@ func (m *HostDevicePlugin) Register(kubeletEndpoint, resourceName string) error 
 	client := pluginapi.NewRegistrationClient(conn)
 	reqt := &pluginapi.RegisterRequest{
 		Version:      pluginapi.Version,
-		Endpoint:     path.Base(m.socket),
+		Endpoint:     strings.TrimPrefix(m.socket, pluginapi.DevicePluginPath),
 		ResourceName: resourceName,
+		Options: &pluginapi.DevicePluginOptions{
+			PreStartRequired:                false,
+			GetPreferredAllocationAvailable: false,
+		},
 	}
 
 	_, err = client.Register(context.Background(), reqt)
@@ -154,6 +171,27 @@ func (m *HostDevicePlugin) Register(kubeletEndpoint, resourceName string) error 
 		return err
 	}
 	return nil
+}
+
+func (m *HostDevicePlugin) GetInfo(ctx context.Context, req *watcherapi.InfoRequest) (*watcherapi.PluginInfo, error) {
+	klog.Info("GetInfo")
+	return &watcherapi.PluginInfo{
+		Type:              watcherapi.DevicePlugin,
+		Name:              m.resourceName,
+		Endpoint:          m.endpoint,
+		SupportedVersions: []string{pluginapi.Version}}, nil
+}
+
+// NotifyRegistrationStatus receives the registration notification from watcher
+func (m *HostDevicePlugin) NotifyRegistrationStatus(ctx context.Context, status *watcherapi.RegistrationStatus) (*watcherapi.RegistrationStatusResponse, error) {
+	if m.registrationStatus != nil {
+		m.registrationStatus <- *status
+	}
+	if !status.PluginRegistered {
+		klog.Infof("Registration failed: %v", status.Error)
+	}
+	klog.InfoS("NotifyRegistrationStatus", "registatus", m.registrationStatus, "plugregistered", status.PluginRegistered)
+	return &watcherapi.RegistrationStatusResponse{}, nil
 }
 
 func (m *HostDevicePlugin) GetDevicePluginOptions(ctx context.Context, e *pluginapi.Empty) (*pluginapi.DevicePluginOptions, error) {
@@ -172,6 +210,7 @@ func (m *HostDevicePlugin) GetPreferredAllocation(ctx context.Context, r *plugin
 func (m *HostDevicePlugin) ListAndWatch(e *pluginapi.Empty, s pluginapi.DevicePlugin_ListAndWatchServer) error {
 	klog.Info("ListAndWatch")
 
+	klog.Infof("Sending ListAndWatch initial response with %v", m.devs)
 	s.Send(&pluginapi.ListAndWatchResponse{Devices: m.devs})
 
 	ch := make(chan []*pluginapi.Device)
@@ -187,44 +226,47 @@ func (m *HostDevicePlugin) ListAndWatch(e *pluginapi.Empty, s pluginapi.DevicePl
 		case <-m.stop:
 			return nil
 		case updated := <-ch:
+			klog.Infof("Sending ListAndWatch response with %s", updated)
 			s.Send(&pluginapi.ListAndWatchResponse{Devices: updated})
 		}
 	}
 }
 
-// Update allows the device plugin to send new devices through ListAndWatch
-func (m *HostDevicePlugin) Update(newDevs []pluginapi.Device) {
-	var devs []*pluginapi.Device
-	if len(m.devs) == len(newDevs) {
-		diff := false
-		for _, nd := range newDevs {
-			for _, od := range m.devs {
-				if nd.ID != od.ID {
-					diff = true
-				}
-			}
-			devs = append(devs, &nd)
-		}
-		if !diff {
-			devs = m.devs
-		}
-	}
-	if len(m.devs) > 0 && len(newDevs) == 0 {
-		for _, d := range m.devs {
-			devs = append(devs, &pluginapi.Device{
-				ID:                   d.ID,
-				Topology:             d.Topology,
-				XXX_NoUnkeyedLiteral: d.XXX_NoUnkeyedLiteral,
-				XXX_sizecache:        d.XXX_sizecache,
-				Health:               pluginapi.Unhealthy,
-			})
-		}
-	}
-
+// UpdateDevices allows the device plugin to send new devices through ListAndWatch
+func (m *HostDevicePlugin) UpdateDevices(devs []*pluginapi.Device) {
 	m.devs = devs
 	for _, ch := range m.updates {
 		ch <- devs
 	}
+}
+
+func (m *HostDevicePlugin) SetDevice(dev *pluginapi.Device) {
+	var nextDevs []*pluginapi.Device
+	var added bool
+	for _, d := range m.devs {
+		if d.ID == dev.ID {
+			added = true
+			nextDevs = append(nextDevs, dev)
+		} else {
+			nextDevs = append(nextDevs, d)
+		}
+	}
+
+	if !added {
+		nextDevs = append(nextDevs, dev)
+	}
+
+	m.UpdateDevices(nextDevs)
+}
+
+func (m *HostDevicePlugin) UnsetDevice(dev *pluginapi.Device) {
+	var nextDevs []*pluginapi.Device
+	for _, d := range m.devs {
+		if d.ID != dev.ID {
+			nextDevs = append(nextDevs, d)
+		}
+	}
+	m.UpdateDevices(nextDevs)
 }
 
 // Allocate does a mock allocation
